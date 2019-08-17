@@ -30,5 +30,5 @@ There are lot of categorixal data that does not contribute to the analysis and n
 
 Here we are using 3 models and comparinfg the 3 models for efficiency.
 
-## final result of the test data.
+## Final result of the test data.
 We are using the best model and predicting the output using the best perfoming model - random forest.
