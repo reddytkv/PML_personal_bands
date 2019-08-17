@@ -1,0 +1,208 @@
+---
+title: "Practical_Machine_Learning_Human_Activity_Project"
+author: "Venkat"
+date: "8/11/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+In this project, our goal is to use data from accelerometers on the belt, forearm, arm, 
+and dumbell of 6 participants. 
+They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har 
+(see the section on the Weight Lifting Exercise Dataset).
+
+```{r libraries, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+```
+
+## Data Processing
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har
+
+###Load the data and alalyze
+```{r Data Processing}
+train_file="./data/pml-training.csv"
+test_file="./data/pml-testing.csv"
+train_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+#check if file exists, else download it
+if(!file.exists(train_file))
+{
+  download.file(train_url,train_file,method="auto")
+}
+if(!file.exists(test_file))
+{
+  download.file(test_url,test_file,method="auto")
+}
+##Load the data and Analyze
+#train_data <- read.csv(train_file)
+#head(train_data)
+#dim(train_data)
+#colnames(train_data)
+
+## The data contains spaces, NA and DIV/0 values. make them na
+train_data <- read.csv(train_file, na.strings=c("", " ","#DIV/0!","NA"))
+test_data <- read.csv(test_file, na.strings=c("", " ","#DIV/0!","NA"))
+
+
+dim(train_data)
+#sapply(train_data, class)
+str(head(train_data,10))
+```
+
+### Clean the data - remove identifying columns, zero value columns
+After further looking at the data we see that the starting 7 columns are 
+identifying and window columns. 
+Also there are columns that are completely zero and will not contribute 
+to the analysis. 
+
+```{r Data Cleaning}
+train_data <- train_data[, -c(1:7)]
+test_data <- test_data[, -c(1:7)]
+
+dim(train_data)
+### Now select the rows that has column sums greater then zero
+train_data <- train_data[, colSums(is.na(train_data)) == 0]
+dim(train_data)
+test_data <- test_data[, colSums(is.na(test_data)) == 0]
+dim(test_data)
+str(head(train_data,10))
+```
+
+## Models/Algorithms
+
+### Partition the training sample data into training and test(cross validation) sets.
+
+```{r Models}
+# create a partition with the training dataset 
+train_split  <- createDataPartition(train_data$classe, p=0.7, list=FALSE)
+train_df <- train_data[train_split , ]
+validate_df  <- train_data[-train_split , ]
+## Dimension of Training data
+dim(train_df)
+## Dimensions of test/cross validation data
+dim(validate_df)
+```
+
+### Decision Tree Algorithm
+#### Train the model on the train data 
+```{r decision_tree}
+# install and load the rpart & plotting library
+
+set.seed(117)
+model_file <- "model_dt.RData"
+if (!file.exists(model_file )) {
+  ##How to avoid overfitting? By changing the minbucket size
+  model_dt<- rpart(classe ~ ., data=train_df, method="class", minbucket=50)
+  # Plot the tree using fancyRpartPlot command defined in rpart.plot package
+  prp(model_dt)
+
+  save(model_dt, file = model_file)
+} else {
+    load(file=model_file, verbose = TRUE)
+  
+}
+
+#model_dt
+```
+
+#### Validate the Decision Tree model and compute the accuracy using confusion matrix
+```{r decision_tree_validate}
+validate_dt <- predict(model_dt, validate_df, type = "class")
+# Using coinfusion matrix test the accuracy of the model
+confusionMatrix(validate_dt, validate_df$classe)
+
+```
+
+### Generalized Boosted Model
+#### Train the model on the train data 
+```{r gbm}
+# install and load the rpart & plotting library
+
+set.seed(117)
+model_file <- "model_gbm.RData"
+if (!file.exists(model_file )) {
+  ##xross validation
+  cv_gbm <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+  model_gbm  <- train(classe ~ ., data=train_df, method = "gbm",
+                    trControl = cv_gbm, verbose = FALSE)
+  #model_gbm$finalModel
+
+
+  save(model_gbm, file = model_file)
+} else {
+    load(file=model_file, verbose = TRUE)
+    #model_gbm$finalModel
+}
+
+model_gbm$finalModel
+```
+
+#### Validate the boosted model and compute the accuracy using confusion matrix
+```{r gbm_validate}
+validate_gbm <- predict(model_gbm, newdata=validate_df)
+# Using coinfusion matrix test the accuracy of the model
+confusionMatrix(validate_gbm, validate_df$classe)
+
+```
+
+### Random Forest Algorithm
+#### Random Forest Algorithm on the training data.
+
+```{r Random_Forest}
+set.seed(117)
+model_file <- "model_rf.RData"
+if (!file.exists(model_file )) {
+  
+    model_rf <- train(classe ~ ., data=train_df
+                      , method="rf"
+                      , preProcess = c("center","scale") # normalising
+                      , trControl = trainControl(method="cv"
+                      , number=4 # Folds of training data
+                      , verboseIter=TRUE)
+               )
+    save(model_rf, file = model_file)
+} else {
+    load(file=model_file, verbose = TRUE)
+  
+}
+
+model_rf
+```
+
+#### Test out model on the validation data
+Now that we have a model trained on the train data, Evaluate the algorithm 
+efficiency on the test dataset.
+
+```{r rf_test}
+# prediction on Test dataset
+predict_rf <- predict(model_rf, newdata=validate_df)
+confusion_metrix <- confusionMatrix(predict_rf, validate_df$classe)
+confusion_metrix
+
+```
+
+### Generate the test Data Output
+Now that we have a working model now, predict the classe for the test data 
+supplied along with the exercvise.
+
+Here based on the comparision of the 3 algorithms provided, we are going to 
+predict using the random forest, since it has the highest accuracy.
+```{r testing_data}
+predict(model_rf, newdata=test_data)
+```
