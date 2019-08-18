@@ -125,8 +125,8 @@ if (!file.exists(model_file )) {
 ```{r decision_tree_validate}
 validate_dt <- predict(model_dt, validate_df, type = "class")
 # Using coinfusion matrix test the accuracy of the model
-confusionMatrix(validate_dt, validate_df$classe)
-
+dt_cm <- confusionMatrix(validate_dt, validate_df$classe)
+print(dt_cm)
 ```
 
 ### Generalized Boosted Model
@@ -157,8 +157,8 @@ model_gbm$finalModel
 ```{r gbm_validate}
 validate_gbm <- predict(model_gbm, newdata=validate_df)
 # Using coinfusion matrix test the accuracy of the model
-confusionMatrix(validate_gbm, validate_df$classe)
-
+gbm_cm <- confusionMatrix(validate_gbm, validate_df$classe)
+print(gbm_cm)
 ```
 
 ### Random Forest Algorithm
@@ -169,13 +169,7 @@ set.seed(117)
 model_file <- "model_rf.RData"
 if (!file.exists(model_file )) {
   
-    model_rf <- train(classe ~ ., data=train_df
-                      , method="rf"
-                      , preProcess = c("center","scale") # normalising
-                      , trControl = trainControl(method="cv"
-                      , number=4 # Folds of training data
-                      , verboseIter=TRUE)
-               )
+    model_rf <<- randomForest(classe ~ ., data = train_df, mtry = 3, ntree = 150, do.trace = 25, cv.fold = 13)
     save(model_rf, file = model_file)
 } else {
     load(file=model_file, verbose = TRUE)
@@ -185,6 +179,8 @@ if (!file.exists(model_file )) {
 model_rf
 ```
 
+
+
 #### Test out model on the validation data
 Now that we have a model trained on the train data, Evaluate the algorithm 
 efficiency on the test dataset.
@@ -192,10 +188,50 @@ efficiency on the test dataset.
 ```{r rf_test}
 # prediction on Test dataset
 predict_rf <- predict(model_rf, newdata=validate_df)
-confusion_metrix <- confusionMatrix(predict_rf, validate_df$classe)
-confusion_metrix
+rf_cm <- confusionMatrix(predict_rf, validate_df$classe)
+print(rf_cm)
 
 ```
+```{r rf_variable_importance}
+
+# Variable Importance According to Random Forest
+rf_var_imp <- as.data.frame(importance(model_rf))
+rf_var_imp_sorted <- rf_var_imp[order(rf_var_imp$MeanDecreaseGini),]
+head(rf_var_imp_sorted, 20)
+
+varImpPlot(model_rf, n.var = 20, sort = TRUE, main = "Variable Importance", lcolor = "navyblue", bg = "orange")
+```
+
+### Comparing Accuracies
+```{r rf_accuracy}
+
+dt_accuracy <- dt_cm$overall[1]
+gbm_accuracy <- gbm_cm$overall[1]
+rf_accuracy <- rf_cm$overall[1]
+
+df_accuracy <- data.frame(Algorithm = c("Decision Tree", "Random Forest", "Gradiant Boost Model"), Index = c("dt", "rf", "gbm"), Accuracy = c(dt_accuracy, rf_accuracy, gbm_accuracy))
+df_accuracy <- df_accuracy[order(df_accuracy$Accuracy),]
+print(df_accuracy)
+```
+By comparing the models, we see that that Random Forest is the best performing algorithm with 99.74% accuracy.
+
+### Errors
+
+
+#### In Sampleerror
+```{r rf_in_of_sample_error}
+# In sample Error Rate
+InSampError.rf <- (1 - 0.9974)*100
+InSampError.rf
+```
+In Sample error is: 0.6%
+
+#### Out Of Sampleerror
+```{r rf_out_of_sample_error}
+print(model_rf)
+```
+As you can see from this output, the OOB is 0.68%.
+
 
 ### Generate the test Data Output
 Now that we have a working model now, predict the classe for the test data 
